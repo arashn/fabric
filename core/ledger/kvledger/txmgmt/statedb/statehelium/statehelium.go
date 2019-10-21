@@ -66,8 +66,13 @@ func (vdb *VersionedDB) Close() {
 	vdb.ds.Close()
 }
 
-// BytesKeySuppoted implements method in VersionedDB interface
-func (vdb *VersionedDB) BytesKeySuppoted() bool {
+// ValidateKeyValue implements method in VersionedDB interface
+func (vdb *VersionedDB) ValidateKeyValue(key string, value []byte) error {
+	return nil
+}
+
+// BytesKeySupported implements method in VersionedDB interface
+func (vdb *VersionedDB) BytesKeySupported() bool {
 	return true
 }
 
@@ -82,8 +87,7 @@ func (vdb *VersionedDB) GetState(namespace string, key string) (*statedb.Version
 	if dbVal == nil {
 		return nil, nil
 	}
-	val, ver := statedb.DecodeValue(dbVal)
-	return &statedb.VersionedValue{Value: val, Version: ver}, nil
+	return decodeValue(dbVal)
 }
 
 // GetVersion implements method in VersionedDB interface
@@ -115,14 +119,42 @@ func (vdb *VersionedDB) GetStateMultipleKeys(namespace string, keys []string) ([
 // startKey is inclusive
 // endKey is exclusive
 func (vdb *VersionedDB) GetStateRangeScanIterator(namespace string, startKey string, endKey string) (statedb.ResultsIterator, error) {
+	return vdb.GetStateRangeScanIteratorWithMetadata(namespace, startKey, endKey, nil)
+}
+
+const optionLimit = "limit"
+
+// GetStateRangeScanIteratorWithMetadata implements method in VersionedDB interface
+func (vdb *VersionedDB) GetStateRangeScanIteratorWithMetadata(namespace string, startKey string, endKey string, metadata map[string]interface{}) (statedb.QueryResultsIterator, error) {
+
+	requestedLimit := int32(0)
+	// if metadata is provided, validate and apply options
+	if metadata != nil {
+		//validate the metadata
+		err := statedb.ValidateRangeMetadata(metadata)
+		if err != nil {
+			return nil, err
+		}
+		if limitOption, ok := metadata[optionLimit]; ok {
+			requestedLimit = limitOption.(int32)
+		}
+	}
+
+	// Note:  metadata is not used for the goleveldb implementation of the range query
 	compositeStartKey := constructCompositeKey(namespace, startKey)
 	compositeEndKey := constructCompositeKey(namespace, endKey)
 	if endKey == "" {
-		// Increment last byte of composteEndKey (last byte of namespace) to iterate through the end of namespace
+		// Increment last byte of compositeEndKey (last byte of namespace) to iterate through the end of namespace
 		compositeEndKey[len(compositeEndKey)-1] += lastKeyIndicator
 	}
-	dbItr := vdb.ds.GetIterator(compositeStartKey, compositeEndKey)
-	return newResultsIterator(namespace, dbItr), nil
+	dbItr, err := vdb.ds.GetIterator(compositeStartKey, compositeEndKey)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return newResultsIterator(namespace, dbItr, requestedLimit), nil
+
 }
 
 // ExecuteQuery implements method in VersionedDB interface
@@ -130,9 +162,19 @@ func (vdb *VersionedDB) ExecuteQuery(namespace, query string) (statedb.ResultsIt
 	return nil, errors.New("ExecuteQuery not supported for helium")
 }
 
+// ExecuteQueryWithMetadata implements method in VersionedDB interface
+func (vdb *VersionedDB) ExecuteQueryWithMetadata(namespace, query string, metadata map[string]interface{}) (statedb.QueryResultsIterator, error) {
+	return nil, errors.New("ExecuteQueryWithMetadata not supported for helium")
+}
+
 // ApplyUpdates implements method in VersionedDB interface
 func (vdb *VersionedDB) ApplyUpdates(batch *statedb.UpdateBatch, height *version.Height) error {
-	tx := heliumhelper.NewTransaction()
+	tx, err := vdb.ds.NewTransaction()
+
+	if err != nil {
+		return err
+	}
+
 	namespaces := batch.GetUpdatedNamespaces()
 	for _, ns := range namespaces {
 		updates := batch.GetUpdates(ns)
@@ -143,11 +185,21 @@ func (vdb *VersionedDB) ApplyUpdates(batch *statedb.UpdateBatch, height *version
 			if vv.Value == nil {
 				tx.Delete(compositeKey)
 			} else {
-				tx.Put(compositeKey, statedb.EncodeValue(vv.Value, vv.Version))
+				encodedVal, err := encodeValue(vv)
+				if err != nil {
+					return err
+				}
+				tx.Put(compositeKey, encodedVal)
 			}
 		}
 	}
-	tx.Put(savePointKey, height.ToBytes())
+	// Record a savepoint at a given height
+	// If a given height is nil, it denotes that we are committing pvt data of old blocks.
+	// In this case, we should not store a savepoint for recovery. The lastUpdatedOldBlockList
+	// in the pvtstore acts as a savepoint for pvt data.
+	if height != nil {
+		tx.Put(savePointKey, height.ToBytes())
+	}
 	// Setting snyc to true as a precaution, false may be an ok optimization after further testing.
 	if err := tx.Commit(); err != nil {
 		return err
@@ -164,7 +216,10 @@ func (vdb *VersionedDB) GetLatestSavePoint() (*version.Height, error) {
 	if versionBytes == nil {
 		return nil, nil
 	}
-	version, _ := version.NewHeightFromBytes(versionBytes)
+	version, _, err := version.NewHeightFromBytes(versionBytes)
+	if err != nil {
+		return nil, err
+	}
 	return version, nil
 }
 
@@ -179,15 +234,21 @@ func splitCompositeKey(compositeKey []byte) (string, string) {
 
 // ResultsIterator implements interface ResultsIterator
 type ResultsIterator struct {
-	namespace string
-	dbItr     heliumhelper.HeIterator
+	namespace            string
+	dbItr                *heliumhelper.HeIterator
+	requestedLimit       int32
+	totalRecordsReturned int32
 }
 
-func newResultsIterator(namespace string, dbItr heliumhelper.HeIterator) *ResultsIterator {
-	return &ResultsIterator{namespace, dbItr}
+func newResultsIterator(namespace string, dbItr *heliumhelper.HeIterator, requestedLimit int32) *ResultsIterator {
+	return &ResultsIterator{namespace, dbItr, requestedLimit, 0}
 }
 
 func (iterator *ResultsIterator) Next() (statedb.QueryResult, error) {
+	if iterator.requestedLimit > 0 && iterator.totalRecordsReturned >= iterator.requestedLimit {
+		return nil, nil
+	}
+
 	dbKey, dbVal := iterator.dbItr.Next()
 	if dbKey == nil {
 		return nil, nil
@@ -195,12 +256,31 @@ func (iterator *ResultsIterator) Next() (statedb.QueryResult, error) {
 	dbValCopy := make([]byte, len(dbVal))
 	copy(dbValCopy, dbVal)
 	_, key := splitCompositeKey(dbKey)
-	value, version := statedb.DecodeValue(dbValCopy)
+	vv, err := decodeValue(dbValCopy)
+	if err != nil {
+		return nil, err
+	}
+
+	iterator.totalRecordsReturned++
+
 	return &statedb.VersionedKV{
-		CompositeKey:   statedb.CompositeKey{Namespace: iterator.namespace, Key: key},
-		VersionedValue: statedb.VersionedValue{Value: value, Version: version}}, nil
+		CompositeKey: statedb.CompositeKey{Namespace: iterator.namespace, Key: key},
+		// TODO remove dereferrencing below by changing the type of the field
+		// `VersionedValue` in `statedb.VersionedKV` to a pointer
+		VersionedValue: *vv}, nil
 }
 
 func (iterator *ResultsIterator) Close() {
 	iterator.dbItr.Close()
+}
+
+func (iterator *ResultsIterator) GetBookmarkAndClose() string {
+	retval := ""
+	dbKey, _ := iterator.dbItr.Next()
+	if dbKey != nil {
+		_, key := splitCompositeKey(dbKey)
+		retval = key
+	}
+	iterator.Close()
+	return retval
 }
