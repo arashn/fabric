@@ -1,9 +1,13 @@
 package statehelium
 
 import (
+	"bytes"
+	"errors"
+
 	"github.com/hyperledger/fabric/common/flogging"
-	"github.com/hyperledger/fabtic/common/ledger/util/heliumhelper"
+	"github.com/hyperledger/fabric/common/ledger/util/heliumhelper"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
+	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version"
 )
 
 var logger = flogging.MustGetLogger("statehelium")
@@ -40,7 +44,7 @@ func (provider *VersionedDBProvider) Close() {
 
 // VersionedDB implements VersionedDB interface
 type VersionedDB struct {
-	ds *heliumhelper.HeDatastore
+	ds     *heliumhelper.HeDatastore
 	dbName string
 }
 

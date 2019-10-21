@@ -7,6 +7,7 @@ import "C"
 import (
 	"bytes"
 	"errors"
+	"unsafe"
 
 	"github.com/hyperledger/fabric/common/flogging"
 )
@@ -73,7 +74,7 @@ func (ds *HeDatastore) Get(key []byte) ([]byte, error) {
 	c_key := C.CBytes(key)
 	key_len := C.size_t(len(key))
 
-	defer C.free (c_key)
+	defer C.free(c_key)
 
 	// Use an initial guess for the val_len
 	val_len := C.size_t(2048) // TODO: Move initial buffer size to config
@@ -192,7 +193,7 @@ type HeIterator struct {
 
 // Get iterator that iterates through range [startKey, endKey)
 func (ds *HeDatastore) GetIterator(startKey []byte, endKey []byte) (*HeIterator, error) {
-	log.Debugf("GetIterator called")
+	logger.Debugf("GetIterator called")
 	c_start_key := C.CBytes(startKey)
 	start_key_len := C.size_t(len(startKey))
 
@@ -210,7 +211,7 @@ func (ds *HeDatastore) GetIterator(startKey []byte, endKey []byte) (*HeIterator,
 }
 
 func (iter *HeIterator) Next() ([]byte, []byte) {
-	log.Debugf("iter.Next called")
+	logger.Debugf("iter.Next called")
 	item := C.he_iter_next(iter.handle)
 
 	key := C.GoBytes(item.key, C.int(item.key_len))
@@ -223,6 +224,6 @@ func (iter *HeIterator) Next() ([]byte, []byte) {
 }
 
 func (iter *HeIterator) Close() {
-	log.Debugf("iter.Close called")
+	logger.Debugf("iter.Close called")
 	C.he_iter_close(iter.handle)
 }
