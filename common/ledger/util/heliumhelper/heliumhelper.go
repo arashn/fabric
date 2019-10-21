@@ -22,17 +22,17 @@ const HE_O_VOLUME_TRUNCATE = 8
 var logger = flogging.MustGetLogger("heliumhelper")
 
 type Provider struct {
-	heUrl string
+	heURL string
 }
 
-func NewProvider(heUrl string) *Provider {
-	return &Provider{heUrl}
+func NewProvider(heURL string) *Provider {
+	return &Provider{heURL}
 }
 
 func (p *Provider) GetDSHandle(dbName string) *HeDatastore {
 	logger.Debugf("GetDSHandle called; dbName: %s", dbName)
 	// Open a separate datastore for each db
-	c_url := C.CString(p.heUrl)
+	c_url := C.CString(p.heURL)
 	c_name := C.CString(dbName)
 	c_flags := C.int(HE_O_CREATE | HE_O_VOLUME_CREATE) // TODO: Put this in configs
 

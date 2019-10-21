@@ -24,9 +24,9 @@ type VersionedDBProvider struct {
 // NewVersionedDBProvider instantiates VersionedDBProvider
 func NewVersionedDBProvider() *VersionedDBProvider {
 	logger.Debugf("NewVersionedDBProvider called")
-	heUrl := "he://.//dev/nvme0n1" // TODO: Put this in configs
-	logger.Debugf("constructing VersionedDBProvider heUrl=%s", heUrl)
-	dbProvider := heliumhelper.NewProvider(heUrl)
+	heURL := "he://.//dev/nvme0n1" // TODO: Put this in configs
+	logger.Debugf("constructing VersionedDBProvider heURL=%s", heURL)
+	dbProvider := heliumhelper.NewProvider(heURL)
 	return &VersionedDBProvider{dbProvider}
 }
 
@@ -68,6 +68,7 @@ func (vdb *VersionedDB) Close() {
 
 // ValidateKeyValue implements method in VersionedDB interface
 func (vdb *VersionedDB) ValidateKeyValue(key string, value []byte) error {
+	// helium supports any byte array for key and/or value (like leveldb)
 	return nil
 }
 
@@ -244,6 +245,7 @@ func newResultsIterator(namespace string, dbItr *heliumhelper.HeIterator, reques
 	return &ResultsIterator{namespace, dbItr, requestedLimit, 0}
 }
 
+// Next implements method in ResultsIterator interface
 func (iterator *ResultsIterator) Next() (statedb.QueryResult, error) {
 	if iterator.requestedLimit > 0 && iterator.totalRecordsReturned >= iterator.requestedLimit {
 		return nil, nil
@@ -270,10 +272,12 @@ func (iterator *ResultsIterator) Next() (statedb.QueryResult, error) {
 		VersionedValue: *vv}, nil
 }
 
+// Close implements method in ResultsIterator interface
 func (iterator *ResultsIterator) Close() {
 	iterator.dbItr.Close()
 }
 
+// GetBookmarkAndClose implements method in ResultsIterator interface
 func (iterator *ResultsIterator) GetBookmarkAndClose() string {
 	retval := ""
 	dbKey, _ := iterator.dbItr.Next()
