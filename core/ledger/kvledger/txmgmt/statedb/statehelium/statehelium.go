@@ -3,11 +3,13 @@ package statehelium
 import (
 	"bytes"
 	"errors"
+	"fmt"
 
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/util/heliumhelper"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version"
+	"github.com/hyperledger/fabric/core/ledger/util/helium"
 )
 
 var logger = flogging.MustGetLogger("statehelium")
@@ -24,7 +26,8 @@ type VersionedDBProvider struct {
 // NewVersionedDBProvider instantiates VersionedDBProvider
 func NewVersionedDBProvider() *VersionedDBProvider {
 	logger.Debugf("NewVersionedDBProvider called")
-	heURL := "he://.//dev/nvme0n1" // TODO: Put this in configs
+	heliumDef := helium.GetHeliumDefinition()
+	heURL := fmt.Sprintf("he://%s/%s", heliumDef.Server, heliumDef.DevicePaths)
 	logger.Debugf("constructing VersionedDBProvider heURL=%s", heURL)
 	dbProvider := heliumhelper.NewProvider(heURL)
 	return &VersionedDBProvider{dbProvider}
@@ -145,8 +148,8 @@ func (vdb *VersionedDB) GetStateRangeScanIteratorWithMetadata(namespace string, 
 	compositeStartKey := constructCompositeKey(namespace, startKey)
 	compositeEndKey := constructCompositeKey(namespace, endKey)
 	if endKey == "" {
-		// Increment last byte of compositeEndKey (last byte of namespace) to iterate through the end of namespace
-		compositeEndKey[len(compositeEndKey)-1] += lastKeyIndicator
+		// Update last byte in compositeEndKey (which is compositeKeySep) so that iterator goes through to the end of namespace
+		compositeEndKey[len(compositeEndKey)-1] = lastKeyIndicator
 	}
 	dbItr, err := vdb.ds.GetIterator(compositeStartKey, compositeEndKey)
 

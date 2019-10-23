@@ -22,6 +22,15 @@ func IsCouchDBEnabled() bool {
 	return false
 }
 
+//IsHeliumEnabled exposes the useCouchDB variable
+func IsHeliumEnabled() bool {
+	stateDatabase := viper.GetString("ledger.state.stateDatabase")
+	if stateDatabase == "Helium" {
+		return true
+	}
+	return false
+}
+
 const confPeerFileSystemPath = "peer.fileSystemPath"
 const confLedgersData = "ledgersData"
 const confLedgerProvider = "ledgerProvider"
