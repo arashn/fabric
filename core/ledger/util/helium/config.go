@@ -15,5 +15,5 @@ func GetHeliumDefinition() *HeliumDef {
 	Server := viper.GetString("ledger.state.heliumConfig.heliumServer")
 	DevicePaths := viper.GetString("ledger.state.heliumConfig.devicePaths")
 
-	return &HeliumDef{server, devicePaths}
+	return &HeliumDef{Server, DevicePaths}
 }
