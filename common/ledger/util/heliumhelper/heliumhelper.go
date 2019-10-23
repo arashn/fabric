@@ -116,7 +116,7 @@ type HeTransaction struct {
 
 func (ds *HeDatastore) NewTransaction() (*HeTransaction, error) {
 	logger.Debugf("Creating new transaction")
-	txHandle := C.he_transaction(ds.handle)
+	txHandle := C.he_transaction(ds.handle, C.uint16(0)) // Don't set any tx flags
 
 	if txHandle == nil {
 		return nil, errors.New("Failed to create new transaction")
