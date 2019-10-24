@@ -130,7 +130,7 @@ const optionLimit = "limit"
 
 // GetStateRangeScanIteratorWithMetadata implements method in VersionedDB interface
 func (vdb *VersionedDB) GetStateRangeScanIteratorWithMetadata(namespace string, startKey string, endKey string, metadata map[string]interface{}) (statedb.QueryResultsIterator, error) {
-
+	logger.Debugf("GetStateRangeScanIteratorWithMetadata called; namespace=%s, startKey=%s, endKey=%s", namespace, startKey, endKey)
 	requestedLimit := int32(0)
 	// if metadata is provided, validate and apply options
 	if metadata != nil {
