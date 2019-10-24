@@ -12,12 +12,14 @@ import (
 	"github.com/hyperledger/fabric/common/flogging"
 )
 
-const HE_MAX_VAL_LEN = 16777215
+const heMaxValLen = 16777215
 
-const HE_O_CREATE = 1
-const HE_O_TRUNCATE = 2
-const HE_O_VOLUME_CREATE = 4
-const HE_O_VOLUME_TRUNCATE = 8
+const heOCreate = 1
+const heOTruncate = 2
+const heOVolumeCreate = 4
+const hEOVolumeTruncate = 8
+
+const heErrItemNotFound = -121
 
 var logger = flogging.MustGetLogger("heliumhelper")
 
@@ -34,7 +36,7 @@ func (p *Provider) GetDSHandle(dbName string) *HeDatastore {
 	// Open a separate datastore for each db
 	c_url := C.CString(p.heURL)
 	c_name := C.CString(dbName)
-	c_flags := C.int(HE_O_CREATE | HE_O_VOLUME_CREATE) // TODO: Put this in configs
+	c_flags := C.int(heOCreate | heOVolumeCreate) // TODO: Put this in configs
 
 	defer C.free(unsafe.Pointer(c_url))
 	defer C.free(unsafe.Pointer(c_name))
@@ -82,7 +84,20 @@ func (ds *HeDatastore) Get(key []byte) ([]byte, error) {
 
 	item := C.struct_he_item{key: c_key, val: c_val, key_len: key_len}
 
-	C.he_lookup(ds.handle, &item, C.size_t(0), val_len)
+	err := C.he_lookup(ds.handle, &item, C.size_t(0), val_len)
+
+	// If there was an error looking up the key (for example, item not found),
+	// return nil for byte array
+	if int(err) != 0 {
+		C.free(c_val)
+		// If key was not found, don't return error
+		if int(err) == heErrItemNotFound {
+			logger.Debugf("Key not found: %x", key)
+			return nil, nil
+		}
+		// If any other error occurs, return error
+		return nil, errors.New("Failed to lookup key")
+	}
 
 	if int(item.val_len) > int(val_len) {
 		// Item value size was larger than initial buffer size; reallocate buffer and retry
@@ -201,7 +216,7 @@ func (ds *HeDatastore) GetIterator(startKey []byte, endKey []byte) (*HeIterator,
 
 	seekItem := C.struct_he_item{key: c_start_key, key_len: start_key_len}
 
-	iter := C.he_iter_open(ds.handle, &seekItem, C.size_t(0), C.size_t(HE_MAX_VAL_LEN), C.int(0))
+	iter := C.he_iter_open(ds.handle, &seekItem, C.size_t(0), C.size_t(heMaxValLen), C.int(0))
 
 	if iter == nil {
 		return nil, errors.New("Failed to create iterator")
