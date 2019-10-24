@@ -202,8 +202,9 @@ func (tx *HeTransaction) Commit() error {
 }
 
 type HeIterator struct {
-	endKey []byte
-	handle C.he_iter_t
+	released bool
+	endKey   []byte
+	handle   C.he_iter_t
 }
 
 // Get iterator that iterates through range [startKey, endKey)
@@ -223,7 +224,7 @@ func (ds *HeDatastore) GetIterator(startKey []byte, endKey []byte) (*HeIterator,
 		return nil, errors.New("Failed to create iterator")
 	}
 
-	return &HeIterator{endKey, iter}, nil
+	return &HeIterator{false, endKey, iter}, nil
 }
 
 func (iter *HeIterator) Next() ([]byte, []byte) {
@@ -247,7 +248,15 @@ func (iter *HeIterator) Next() ([]byte, []byte) {
 	return key, C.GoBytes(item.val, C.int(item.val_len))
 }
 
+// Close closes the HeIterator
+// It is safe to call this method multiple times, as the HeIterator closes the underlying
+// Helium iterator only once
 func (iter *HeIterator) Close() {
 	logger.Debugf("iter.Close called")
-	C.he_iter_close(iter.handle)
+	// If iterator has not been released (closed) before, close it
+	// This prevents multiple calls to Close() from causing a double-free in Helium
+	if !iter.released {
+		C.he_iter_close(iter.handle)
+		iter.released = true
+	}
 }
