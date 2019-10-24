@@ -277,11 +277,13 @@ func (iterator *ResultsIterator) Next() (statedb.QueryResult, error) {
 
 // Close implements method in ResultsIterator interface
 func (iterator *ResultsIterator) Close() {
+	logger.Debugf("Close() called")
 	iterator.dbItr.Close()
 }
 
 // GetBookmarkAndClose implements method in ResultsIterator interface
 func (iterator *ResultsIterator) GetBookmarkAndClose() string {
+	logger.Debugf("GetBookmarkAndClose() called")
 	retval := ""
 	dbKey, _ := iterator.dbItr.Next()
 	if dbKey != nil {

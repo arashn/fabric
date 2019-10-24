@@ -208,7 +208,7 @@ type HeIterator struct {
 
 // Get iterator that iterates through range [startKey, endKey)
 func (ds *HeDatastore) GetIterator(startKey []byte, endKey []byte) (*HeIterator, error) {
-	logger.Debugf("GetIterator called; startKey=%x; endKey=%x")
+	logger.Debugf("GetIterator called; startKey=%x; endKey=%x", startKey, endKey)
 	logger.Debugf("Getting iterator for range [%#v] - [%#v]", startKey, endKey)
 	c_start_key := C.CBytes(startKey)
 	start_key_len := C.size_t(len(startKey))
